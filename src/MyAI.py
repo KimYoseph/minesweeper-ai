@@ -39,7 +39,14 @@ class MyAI( AI ):
         self._move_x = startX
         self._move_y = startY
 
+        self._mine_x = None
+        self._mine_y = None 
+
         self._frontier = []
+
+        self._covered = set() # a set of safe covered blocks to uncover after mine has been identified.
+        self._mine_identified = False
+        self._completed = False 
 
         ########################################################################
         #							YOUR CODE ENDS							   #
@@ -49,39 +56,94 @@ class MyAI( AI ):
     def getAction(self, number: int) -> "Action Object":
 
         ########################################################################
-        #							YOUR CODE BEGINS						   #
+        #                           YOUR CODE BEGINS                            #
         ########################################################################
         '''
         important notes****
         - 0 indexed board (dimensions excluded)
         - board always starts with a '0' tile
         '''
-        print("1")
-        #UPDATE BOARD HERE
+
+        if self._completed:
+            return Action(AI.Action.LEAVE)
+
+        if self._mine_identified:
+            if self._covered:
+                move = self._covered.pop()
+                self._move_x = move[0]
+                self._move_y = move[1]
+                return Action(AI.Action.UNCOVER, self._move_x, self._move_y)
+            self._completed = True 
+            return Action(AI.Action.UNFLAG, self._mine_x, self._mine_y)
+        
+
+        # UPDATE BOARD HERE
         self._board[self._move_x][self._move_y] = number
+        heapq.heappush(self._frontier, (number, self._move_x, self._move_y))
+        unmarked_neighbors = []
 
-        heapq.heappush(self._frontier, (number, self._move_x, self._move_y)) # push previous move into priqueue
-        tile_no, self._move_x, self._move_y = heapq.heappop(self._frontier) # pop based on tile_no
+        while not unmarked_neighbors and self._frontier:
+            tile_no, self._move_x, self._move_y = heapq.heappop(self._frontier)
+            neighbors = self._getNeighbors(self._move_x, self._move_y)
+            unmarked_neighbors = self._UnMarkedNeighbors(neighbors)
 
-
-        neighbors = self._getNeighbors(self._move_x, self._move_y)
-        unmarked_neighbors = self._UnMarkedNeighbors(neighbors)
         action_x, action_y = unmarked_neighbors[0]
 
         if tile_no == 0: # EffectiveLabel(x) == 0, but board is only 0's
-            if len(unmarked_neighbors) != 1: # add to priqueue unmarked neighbors > 1
+            if len(unmarked_neighbors) != 1:
                 heapq.heappush(self._frontier, (tile_no, self._move_x, self._move_y))
-            #update moves:
+
             self._move_x = action_x
             self._move_y = action_y
-            print(self._move_y, self._move_x)
+
             return Action(AI.Action.UNCOVER, self._move_x, self._move_y)
-        else:  # tile_no == 1 -> then no more zeroes
-            print(action_y, action_x)
-            self._board[action_x][action_y] = -1
-            return Action(AI.Action.FLAG, action_x, action_y)
+
+        else: # tile_no == 1 -> then no more zeroes
+            '''
+            This block is to gather covered neighbors and is executed only
+            for the first time position with tile_no == 1 is popped from priority queue above.
+            '''
+            unmarked_neighbors_set = set(unmarked_neighbors) 
+            mine = unmarked_neighbors_set.copy()
+            self._covered = unmarked_neighbors_set.copy()
+
+            while self._frontier:
+                tile_no, move_x, move_y = heapq.heappop(self._frontier)
+                if tile_no != 1:
+                    continue
+                neighbors = self._getNeighbors(move_x, move_y)
+                unmarked_neighbors = self._UnMarkedNeighbors(neighbors)
+                unmarked_neighbors_set = set(unmarked_neighbors)
+                if (len(mine) > 1):
+                    mine &= unmarked_neighbors_set
+                self._covered |= unmarked_neighbors_set
+
+            for x, y in self._covered.copy():
+                neighbors = self._getNeighbors(x, y)
+                #Expand self._covered by covered neighbors of covered neighbors of 1's
+                self._covered |= set(self._UnMarkedNeighbors(neighbors)) 
+
+            if len(mine) == 1:
+                '''
+                If there are no more tile_no == 0 blocks to expand,
+                a mine has to be adjacent to every 1's that has been uncovered, and mine should be identifiable at this point.
+                '''
+                self._mine_identified = True
+
+                self._covered -= mine
+
+                move = mine.pop()
+                
+                self._mine_x = move[0]
+                self._mine_y = move[1]
+
+                self._board[move[0]][move[1]] = -1
+                return Action(AI.Action.FLAG, move[0], move[1])
+
+            return Action(AI.Action.LEAVE)
+
         ########################################################################
-        #							YOUR CODE ENDS							   #
+        #                           YOUR CODE ENDS                              #
         ########################################################################
 
     def _NumUnMarkedNeighbors(self, unmarked_neighbors):
@@ -103,9 +165,9 @@ class MyAI( AI ):
         neighbors = []
 
         topNeighbors = move_x- 1 >= 0
-        bottomNeighbors = move_x + 1 <= self._rowDimension
+        bottomNeighbors = move_x + 1 < self._rowDimension
         leftNeighbors = move_y - 1 >= 0
-        rightNeighbors = move_y + 1 <= self._colDimension
+        rightNeighbors = move_y + 1 < self._colDimension
 
         if (rightNeighbors):
             neighbors.append((move_x, move_y + 1))
