@@ -58,6 +58,7 @@ class MyAI( AI ):
 		'''
 
 		#UPDATE BOARD HERE
+		self._board[self._move_y][self._move_x] = number
 
 		heapq.heappush(self._frontier, (number, self._move_x, self._move_y)) # push previous move into priqueue
 		tile_no, self._move_x, self._move_y = heapq.heappop(self._frontier) # pop based on tile_no
@@ -70,15 +71,13 @@ class MyAI( AI ):
 		if tile_no == 0: # EffectiveLabel(x) == 0, but board is only 0's
 			if len(unmarked_neighbors) != 1: # add to priqueue unmarked neighbors > 1
 				heapq.heappush(self._frontier, (tile_no, self._move_x, self._move_y))
-
-			#update board ?
-			
 			#update moves:
 			self._move_x = action_x
 			self._move_y = action_y
 
 			return Action(AI.Action.UNCOVER, self._move_x, self._move_y)
 		else: # tile_no == 1 -> then no more zeroes (board complete)
+			self._board[action_y][action_x] = -1  # FLAG
 			return Action(AI.Action.FLAG, action_x, action_y) # flag only bomb
 		########################################################################
 		#							YOUR CODE ENDS							   #
