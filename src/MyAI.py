@@ -26,6 +26,12 @@ class MyAI( AI ):
         ########################################################################
         #							YOUR CODE BEGINS						   #
         ########################################################################
+
+        # tasks: 
+        # - updating board (effective label)
+        # - doing actions (when to uncover, when to pick mines)
+        # - random action
+
         self._board = []
         for i in range(rowDimension): # (row by col filed with None)
             self._board.append([])
@@ -39,17 +45,12 @@ class MyAI( AI ):
         self._move_x = startX
         self._move_y = startY
 
-        self._mine_x = None
-        self._mine_y = None
-
         self._flags = set()
-        self._pending_flags = set()
+        self._pending_actions = set() #combined self._safe and self._pending_flags
 
         self._frontier = []
-
-        self._safe = set()
         
-        self._remaining_unmarked_cells = []
+        self._remaining_unmarked_cells = [] # empty until self._total_mines == len(self._flags)
 
         self._all_mines_identified = False
 
@@ -79,75 +80,91 @@ class MyAI( AI ):
                 return Action(AI.Action.UNCOVER, self._move_x, self._move_y)
             return Action(AI.Action.LEAVE)
 
-
-        #UPDATE EFFECTIVE LABEL of self._move_x, self._move_y HERE
-
-        heapq.heappush(self._frontier, (self._getFrontierPriority(self._move_x, self._move_y), self._move_x, self._move_y))
-
+        self._updateBoard(number) #updates effective label according to last action (flag --> update neighbors, uncover --> update self)
+        
         unmarked_neighbors = []
-
+        # pop from frontier AFTER all pending actions are finished.
         while not unmarked_neighbors and self._frontier:
             tile_no, self._move_x, self._move_y = heapq.heappop(self._frontier)
-            neighbors = self._getNeighbors(self._move_x, self._move_y)
-            unmarked_neighbors = self._UnMarkedNeighbors(neighbors)
+            unmarked_neighbors = self._getUnMarkedNeighbors(self._move_x, self._move_y)
 
-        #UPDATE EFFECTIVE LABEL OF POPPED self._move_x, self._move_y HERE BASED ON NUMBER OF NEARBY FLAGS.
-
+        # UPDATE EFFECTIVE LABEL OF POPPED self._move_x, self._move_y HERE BASED ON NUMBER OF NEARBY FLAGS.
+        # **** doesn't work (effective label should already be represented on the board)
+        
         #effective label == 0
         if self._board[self._move_x][self._move_y] == 0:
             #all cells are safe.
-            for neighbor in unmarked_neighbors:
-                self._safe.add(neighbor)
+            for x,y in unmarked_neighbors:
+                self._pending_actions.add((x,y, AI.Action.UNCOVER))
 
         #effective label == len(UnMarkedNeighbors)
         elif self._board[self._move_x][self._move_y] == len(unmarked_neighbors):
-            for mine in unmarked_neighbors:
-                mine_x, mine_y = mine
+            for mine_x, mine_y in unmarked_neighbors:
                 self._flags.add((mine_x, mine_y))
-                self._pending_flags.add((mine_x, mine_y))
-                neighbors_of_mine = self._getNeighbors(mine_x, mine_y)
+                self._pending_actions.add((mine_x, mine_y, AI.Action.FLAG))
+                neighbors_of_mine = self._getUnMarkedNeighbors(mine_x, mine_y)
                 for neighbor_x, neighbor_y in neighbors_of_mine:
-                    if self._board[neighbor_x][neighbor_y] is not None:
-                        heapq.heappush(self._frontier, (self._getFrontierPriority(neighbor_x, neighbor_y), neighbor_x, neighbor_y))
+                    heapq.heappush(self._frontier, (self._getFrontierPriority(neighbor_x, neighbor_y), neighbor_x, neighbor_y))
+                    # something to note: --> potential duplicates within the priqueue. May or may not be an issue?
 
         if len(self._flags) == self._total_mines:
             #all mines identified
-            self._remaining_unmarked_cells = self._getUnMarkedCell()
+            self._remaining_unmarked_cells = self._getAllUnMarkedCell()
             self._all_mines_identified = True
-
-        if self._safe:
-            self._move_x, self._move_y = self._safe.pop()
-            return Action(AI.Action.UNCOVER, self._move_x, self._move_y)
         
-        if self._pending_flags:
-            self._move_x, self._move_y = self._pending_flags.pop()
-            return Action(AI.Action.FLAG, self._move_x, self._move_y)
+        if self._pending_actions():
+            move_x, move_y, ai_action = self._pending_actions.pop()
+            return Action(ai_action, move_x, move_y)
 
         #RETURN RANDOM ACTION HERE
-        return Action(AI.Action.LEAVE)
+        self._move_x, self._move_y = self._getRandomMove()
+        return Action(AI.Action.UNCOVER, self._move_x, self._move_y)
+
         ########################################################################
         #                           YOUR CODE ENDS                              #
         ########################################################################
+    
+    def _updateBoard(self, number):
+        unmarked_neighbors = self._getUnMarkedNeighbors(self._move_x, self._move_y)
+        marked_neighbors = self._getMarkedNeighbors(self._move_x, self._move_y)
+        if number == -1:
+            for n_x, n_y in unmarked_neighbors:
+                self._board[n_x][n_y] -=1
+        else:
+            self._board[self._move_x][self._move_y] = number - len(marked_neighbors)
+
+    def _getRandomMove(self):
+        for x in range(self._rowDimension):
+            for y in range(self._colDimension):
+                if self._board[x][y] == None:
+                    return (x,y)
 
     def _getFrontierPriority(self, move_x, move_y):
-        unmarked_neighbors = self._UnMarkedNeighbors(self._getNeighbors(move_x, move_y))
+        unmarked_neighbors = self._getUnMarkedNeighbors(move_x, move_y)
         effective_label = self._board[move_x][move_y]
         return min(effective_label, len(unmarked_neighbors) - effective_label)
 
-    def _getUnMarkedCell(self):
+    def _getAllUnMarkedCell(self):
         unmarked_cells = []
         for x in range(self._rowDimension):
             for y in range(self._colDimension):
                 if self._board[x][y] is None and (x, y) not in self._flags:
                     unmarked_cells.append((x, y))
         return unmarked_cells
-
-    def _NumUnMarkedNeighbors(self, unmarked_neighbors):
-        return len(unmarked_neighbors)
     
-    def _UnMarkedNeighbors(self, neighbors):
+    def _getMarkedNeighbors(self, move_x, move_y):
+        ''' returns list of flagged neighbors'''
+        neighbors = self._getNeighbors(move_x, move_y)
+        marked_neighbors = []
+        for x,y in neighbors:
+            if self._board[x][y] == -1:
+                marked_neighbors.append((x,y))
+        return marked_neighbors
+    
+    def _getUnMarkedNeighbors(self, move_x, move_y):
         '''returns list of unmarked neighbors
          - "unmarked" means undiscovered'''
+        neighbors = self._getNeighbors(move_x, move_y)
         unmarked_neighbors = []
         for x,y in neighbors:
             if self._board[x][y] == None:
