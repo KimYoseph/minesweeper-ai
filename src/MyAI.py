@@ -40,13 +40,18 @@ class MyAI( AI ):
         self._move_y = startY
 
         self._mine_x = None
-        self._mine_y = None 
+        self._mine_y = None
+
+        self._flags = set()
+        self._pending_flags = set()
 
         self._frontier = []
 
-        self._covered = set() # a set of safe covered blocks to uncover after mine has been identified.
-        self._mine_identified = False
-        self._completed = False 
+        self._safe = set()
+        
+        self._remaining_unmarked_cells = []
+
+        self._all_mines_identified = False
 
         ########################################################################
         #							YOUR CODE ENDS							   #
@@ -64,22 +69,21 @@ class MyAI( AI ):
         - board always starts with a '0' tile
         '''
 
-        if self._completed:
-            return Action(AI.Action.LEAVE)
-
-        if self._mine_identified:
-            if self._covered:
-                move = self._covered.pop()
+        if self._all_mines_identified:
+        #put a flag if mine is identified.
+        #put a neighbors of identified mine.
+            if self._remaining_unmarked_cells:
+                move = self._remaining_unmarked_cells.pop()
                 self._move_x = move[0]
                 self._move_y = move[1]
                 return Action(AI.Action.UNCOVER, self._move_x, self._move_y)
-            self._completed = True 
-            return Action(AI.Action.UNFLAG, self._mine_x, self._mine_y)
-        
+            return Action(AI.Action.LEAVE)
 
-        # UPDATE BOARD HERE
-        self._board[self._move_x][self._move_y] = number
-        heapq.heappush(self._frontier, (number, self._move_x, self._move_y))
+
+        #UPDATE EFFECTIVE LABEL of self._move_x, self._move_y HERE
+
+        heapq.heappush(self._frontier, (self._getFrontierPriority(self._move_x, self._move_y), self._move_x, self._move_y))
+
         unmarked_neighbors = []
 
         while not unmarked_neighbors and self._frontier:
@@ -87,64 +91,56 @@ class MyAI( AI ):
             neighbors = self._getNeighbors(self._move_x, self._move_y)
             unmarked_neighbors = self._UnMarkedNeighbors(neighbors)
 
-        action_x, action_y = unmarked_neighbors[0]
+        #UPDATE EFFECTIVE LABEL OF POPPED self._move_x, self._move_y HERE BASED ON NUMBER OF NEARBY FLAGS.
 
-        if tile_no == 0: # EffectiveLabel(x) == 0, but board is only 0's
-            if len(unmarked_neighbors) != 1:
-                heapq.heappush(self._frontier, (tile_no, self._move_x, self._move_y))
+        #effective label == 0
+        if self._board[self._move_x][self._move_y] == 0:
+            #all cells are safe.
+            for neighbor in unmarked_neighbors:
+                self._safe.add(neighbor)
 
-            self._move_x = action_x
-            self._move_y = action_y
+        #effective label == len(UnMarkedNeighbors)
+        elif self._board[self._move_x][self._move_y] == len(unmarked_neighbors):
+            for mine in unmarked_neighbors:
+                mine_x, mine_y = mine
+                self._flags.add((mine_x, mine_y))
+                self._pending_flags.add((mine_x, mine_y))
+                neighbors_of_mine = self._getNeighbors(mine_x, mine_y)
+                for neighbor_x, neighbor_y in neighbors_of_mine:
+                    if self._board[neighbor_x][neighbor_y] is not None:
+                        heapq.heappush(self._frontier, (self._getFrontierPriority(neighbor_x, neighbor_y), neighbor_x, neighbor_y))
 
+        if len(self._flags) == self._total_mines:
+            #all mines identified
+            self._remaining_unmarked_cells = self._getUnMarkedCell()
+            self._all_mines_identified = True
+
+        if self._safe:
+            self._move_x, self._move_y = self._safe.pop()
             return Action(AI.Action.UNCOVER, self._move_x, self._move_y)
+        
+        if self._pending_flags:
+            self._move_x, self._move_y = self._pending_flags.pop()
+            return Action(AI.Action.FLAG, self._move_x, self._move_y)
 
-        else: # tile_no == 1 -> then no more zeroes
-            '''
-            This block is to gather covered neighbors and is executed only
-            for the first time position with tile_no == 1 is popped from priority queue above.
-            '''
-            unmarked_neighbors_set = set(unmarked_neighbors) 
-            mine = unmarked_neighbors_set.copy()
-            self._covered = unmarked_neighbors_set.copy()
-
-            while self._frontier:
-                tile_no, move_x, move_y = heapq.heappop(self._frontier)
-                if tile_no != 1:
-                    continue
-                neighbors = self._getNeighbors(move_x, move_y)
-                unmarked_neighbors = self._UnMarkedNeighbors(neighbors)
-                unmarked_neighbors_set = set(unmarked_neighbors)
-                if (len(mine) > 1):
-                    mine &= unmarked_neighbors_set
-                self._covered |= unmarked_neighbors_set
-
-            for x, y in self._covered.copy():
-                neighbors = self._getNeighbors(x, y)
-                #Expand self._covered by covered neighbors of covered neighbors of 1's
-                self._covered |= set(self._UnMarkedNeighbors(neighbors)) 
-
-            if len(mine) == 1:
-                '''
-                If there are no more tile_no == 0 blocks to expand,
-                a mine has to be adjacent to every 1's that has been uncovered, and mine should be identifiable at this point.
-                '''
-                self._mine_identified = True
-
-                self._covered -= mine
-
-                move = mine.pop()
-                
-                self._mine_x = move[0]
-                self._mine_y = move[1]
-
-                self._board[move[0]][move[1]] = -1
-                return Action(AI.Action.FLAG, move[0], move[1])
-
-            return Action(AI.Action.LEAVE)
-
+        #RETURN RANDOM ACTION HERE
+        return Action(AI.Action.LEAVE)
         ########################################################################
         #                           YOUR CODE ENDS                              #
         ########################################################################
+
+    def _getFrontierPriority(self, move_x, move_y):
+        unmarked_neighbors = self._UnMarkedNeighbors(self._getNeighbors(move_x, move_y))
+        effective_label = self._board[move_x][move_y]
+        return min(effective_label, len(unmarked_neighbors) - effective_label)
+
+    def _getUnMarkedCell(self):
+        unmarked_cells = []
+        for x in range(self._rowDimension):
+            for y in range(self._colDimension):
+                if self._board[x][y] is None and (x, y) not in self._flags:
+                    unmarked_cells.append((x, y))
+        return unmarked_cells
 
     def _NumUnMarkedNeighbors(self, unmarked_neighbors):
         return len(unmarked_neighbors)
@@ -187,4 +183,3 @@ class MyAI( AI ):
                 neighbors.append((move_x + 1, move_y - 1))
 
         return neighbors
-
