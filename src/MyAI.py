@@ -93,14 +93,15 @@ class MyAI( AI ):
         unmarked_neighbors = []
         for x, y in self._numbered_cells:
             unmarked_neighbors = self._getUnMarkedNeighbors(x, y)
+            effective_label = self._getEffectiveLabel(x, y)
             #effective label == 0
-            if self._getEffectiveLabel(x, y) == 0:
+            if effective_label == 0:
                 #all cells are safe.
                 for neighbor_x, neighbor_y in unmarked_neighbors:
                     self._pending_actions.add((neighbor_x, neighbor_y, AI.Action.UNCOVER))
             
             #effective label == len(UnMarkedNeighbors)
-            elif self._getEffectiveLabel(x, y) == len(unmarked_neighbors):
+            elif effective_label == len(unmarked_neighbors):
                 for mine_x, mine_y in unmarked_neighbors:
                     self._flags.add((mine_x, mine_y))
                     self._board[mine_x][mine_y] = -1
