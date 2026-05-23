@@ -67,7 +67,8 @@ class MyAI( AI ):
         - 0 indexed board (dimensions excluded)
         - board always starts with a '0' tile
         '''
-
+        print(self._pending_actions)
+        print(self._frontier)
         if self._all_mines_identified:
         #put a flag if mine is identified.
         #put a neighbors of identified mine.
@@ -75,7 +76,7 @@ class MyAI( AI ):
                 return self._clearBoard()
 
         self._updateBoard(number) #updates effective label according to last action (flag --> update neighbors, uncover --> update self)
-        self._updateFrontier()
+        self._updateFrontier(number)
 
         # UPDATE EFFECTIVE LABEL OF POPPED self._move_x, self._move_y HERE BASED ON NUMBER OF NEARBY FLAGS.
         # **** doesn't work (effective label should already be represented on the board)
@@ -83,7 +84,7 @@ class MyAI( AI ):
         returning_action = None
         while returning_action == None: # ensure we always return an action
             unmarked_neighbors = [] 
-            if self._frontier.empty():
+            if not self._frontier:
                 self._move_x, self._move_y = self._getRandomMove()
                 returning_action = Action(AI.Action.UNCOVER, self._move_x, self._move_y)
                 break
@@ -112,15 +113,16 @@ class MyAI( AI ):
             self._remaining_unmarked_cells = self._getAllUnMarkedCell()
             self._all_mines_identified = True
         
-        if self._pending_actions():
+        if self._pending_actions:
             move_x, move_y, ai_action = self._pending_actions.pop()
             returning_action = Action(ai_action, move_x, move_y)
-        
+        '''
         safe_guess = self._getSafeGuess()
         if safe_guess:
             self._move_x = safe_guess[0]
             self._move_y = safe_guess[1]
             return Action(AI.Action.UNCOVER, self._move_x, self._move_y)
+        '''
         #RETURN RANDOM ACTION HERE
         return returning_action
 
@@ -145,11 +147,11 @@ class MyAI( AI ):
     def _updateFrontier(self,number):
         if number == -1:
             # add uncovered neighbors into the frontier (potential options available)
-            neighbors = self._getTileNeighbors(self._move_x, self._move_y)
+            neighbors = self._getNumberedNeighbors(self._move_x, self._move_y)
             for n_x,n_y in neighbors:
-                heapq.heappush(self._frontier, (self._getEffectiveLabel[n_x][n_y], n_x ,n_y))
+                heapq.heappush(self._frontier, (self._getEffectiveLabel(n_x, n_y), n_x ,n_y))
         else:
-            heapq.heappush(self._frontier, (self._getEffectiveLabel[self._move_x][self._move_y], self._move_x, self._move_y))
+            heapq.heappush(self._frontier, (self._getEffectiveLabel(self._move_x,self._move_y), self._move_x, self._move_y))
     
     def _getEffectiveLabel(self, move_x, move_y):
         marked_neighbors = self._getMarkedNeighbors(move_x, move_y)
@@ -213,16 +215,8 @@ class MyAI( AI ):
             if self._board[x][y] != -1 and self._board[x][y] != None:
                 numbered_neighbors.append((x, y))
         return numbered_neighbors
-    
-    def _getTileNeighbors(self, move_x, move_y):
-        neighbors = self._getNeighbors(move_x, move_y)
-        tile_neighbors = []
-        for x,y in neighbors:
-            if self._board[x][y] != -1 and self._board[x][y] != None:
-                tile_neighbors.append((x,y))
-        return tile_neighbors
 
-    def _getFlaggedNeighbors(self, move_x, move_y):
+    def _getMarkedNeighbors(self, move_x, move_y):
         ''' returns list of flagged neighbors'''
         neighbors = self._getNeighbors(move_x, move_y)
         marked_neighbors = []
