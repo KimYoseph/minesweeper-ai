@@ -49,7 +49,6 @@ class MyAI( AI ):
         self._pending_actions = set() #combined self._safe and self._pending_flags
 
         self._frontier = []
-        self._numbered_cells = set()
         
         self._remaining_unmarked_cells = [] # empty until self._total_mines == len(self._flags)
 
@@ -82,38 +81,43 @@ class MyAI( AI ):
             return Action(AI.Action.LEAVE)
 
         self._board[self._move_x][self._move_y] = number
-
-        if number != None and number != -1:
-            self._numbered_cells.add((self._move_x, self._move_y))
+        if number != None and number != -1 and len(self._getUnMarkedNeighbors(self._move_x, self._move_y)) > 0:
+            heapq.heappush(self._frontier, (self._getFrontierPriority(self._move_x, self._move_y), self._move_x, self._move_y))
 
         if self._pending_actions:
             self._move_x, self._move_y, ai_action = self._pending_actions.pop()
             return Action(ai_action, self._move_x, self._move_y)
         
         unmarked_neighbors = []
-        for x, y in self._numbered_cells:
-            unmarked_neighbors = self._getUnMarkedNeighbors(x, y)
-            effective_label = self._getEffectiveLabel(x, y)
+        # pop from frontier AFTER all pending actions are finished.
+
+        #put as much as pending actions (highest certainty) as possible.
+        while not unmarked_neighbors and self._frontier:
+            tile_no, self._move_x, self._move_y = heapq.heappop(self._frontier)
+            unmarked_neighbors = self._getUnMarkedNeighbors(self._move_x, self._move_y)
+        
             #effective label == 0
-            if effective_label == 0:
+            if self._getEffectiveLabel(self._move_x, self._move_y) == 0:
                 #all cells are safe.
-                for neighbor_x, neighbor_y in unmarked_neighbors:
-                    self._pending_actions.add((neighbor_x, neighbor_y, AI.Action.UNCOVER))
-            
+                for x,y in unmarked_neighbors:
+                    self._pending_actions.add((x,y, AI.Action.UNCOVER))
+
             #effective label == len(UnMarkedNeighbors)
-            elif effective_label == len(unmarked_neighbors):
+            elif self._getEffectiveLabel(self._move_x, self._move_y) == len(unmarked_neighbors):
                 for mine_x, mine_y in unmarked_neighbors:
                     self._flags.add((mine_x, mine_y))
-                    self._board[mine_x][mine_y] = -1
                     self._pending_actions.add((mine_x, mine_y, AI.Action.FLAG))
+                    neighbors_of_mine = self._getNumberedNeighbors(mine_x, mine_y)
+                    for neighbor_x, neighbor_y in neighbors_of_mine:
+                        heapq.heappush(self._frontier, (self._getFrontierPriority(neighbor_x, neighbor_y), neighbor_x, neighbor_y))
+                        # something to note: --> potential duplicates within the priqueue. May or may not be an issue?
+            else:
+                break
 
         if len(self._flags) == self._total_mines:
+            #all mines identified
             self._remaining_unmarked_cells = self._getAllUnMarkedCell()
             self._all_mines_identified = True
-
-        if self._pending_actions:
-            self._move_x, self._move_y, ai_action = self._pending_actions.pop()
-            return Action(ai_action, self._move_x, self._move_y)
 
         safe_guess = self._getSafeGuess()
         if safe_guess:
@@ -127,7 +131,7 @@ class MyAI( AI ):
         ########################################################################
         #                           YOUR CODE ENDS                              #
         ########################################################################
-    
+
     def _updateBoard(self, number):
         unmarked_neighbors = self._getUnMarkedNeighbors(self._move_x, self._move_y)
         marked_neighbors = self._getMarkedNeighbors(self._move_x, self._move_y)
@@ -145,7 +149,8 @@ class MyAI( AI ):
         '''
         Find unmarked (x, y) in lowest local maximum probability of being a mine.
         '''
-        mine_probs = {}
+        candidate_risk = {}
+
         for x in range(self._rowDimension):
             for y in range(self._colDimension):
                 if self._board[x][y] is None or self._board[x][y] == -1:
@@ -156,25 +161,26 @@ class MyAI( AI ):
                     continue
 
                 effective_label = self._getEffectiveLabel(x, y)
-                mine_prob = effective_label / len(unmarked)
+                risk = effective_label / len(unmarked)
 
-                for neighbor_x, neighbor_y in unmarked:
-                    if (neighbor_x, neighbor_y) in self._flags:
+                for ux, uy in unmarked:
+                    if (ux, uy) in self._flags:
                         continue
 
-                    if (neighbor_x, neighbor_y) not in mine_probs:
-                        mine_probs[(neighbor_x, neighbor_y)] = mine_prob
+                    if (ux, uy) not in candidate_risk:
+                        candidate_risk[(ux, uy)] = risk
                     else:
-                        mine_probs[(neighbor_x, neighbor_y)] = max(mine_probs[(neighbor_x, neighbor_y)], mine_prob)
+                        candidate_risk[(ux, uy)] = max(candidate_risk[(ux, uy)], risk)
 
-        if not mine_probs:
+        if not candidate_risk:
             return None
-        return min(mine_probs, key=mine_probs.get)
+
+        return min(candidate_risk, key=candidate_risk.get)
         
     def _getRandomMove(self):
         for x in range(self._rowDimension):
             for y in range(self._colDimension):
-                if self._board[x][y] == None and (x, y) not in self._flags:
+                if self._board[x][y] == None:
                     return (x,y)
 
     def _getFrontierPriority(self, move_x, move_y):
