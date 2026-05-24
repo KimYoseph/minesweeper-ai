@@ -88,7 +88,7 @@ class MyAI( AI ):
             # effective label == 0
             if self._getEffectiveLabel(move_x, move_y) == 0 and unmarked_neighbors: # all cells are safe
                 returning_action = self._makeMove(AI.Action.UNCOVER, move_x, move_y, unmarked_neighbors)
-         #effective label == len(UnMarkedNeighbors)
+            #effective label == len(UnMarkedNeighbors)
             elif self._getEffectiveLabel(move_x, move_y) == len(unmarked_neighbors) and unmarked_neighbors:
                 returning_action = self._makeMove(AI.Action.FLAG, move_x, move_y, unmarked_neighbors)
             else:
@@ -98,12 +98,13 @@ class MyAI( AI ):
             #all mines identified
             self._remaining_unmarked_cells = self._getAllUnMarkedCell()
             self._all_mines_identified = True
+            returning_action = self._clearBoard()
         
         if not self._frontier and returning_action == None: # check if we failed to get a playable move (have to use random moves)
             self._move_x, self._move_y = self._getSafeGuess()
             returning_action = Action(AI.Action.UNCOVER, self._move_x, self._move_y)
     
-        while checked_tiles: # push back all moves into frontie
+        while checked_tiles: # push back all moves into frontier
             move_x, move_y = checked_tiles.pop()
             heapq.heappush(self._frontier, (self._getEffectiveLabel(move_x, move_y), move_x, move_y))
 
@@ -131,11 +132,13 @@ class MyAI( AI ):
             heapq.heappush(self._frontier, (self._getEffectiveLabel(self._move_x, self._move_y), self._move_x, self._move_y))
 
     def _makeMove(self, ai_action, move_x, move_y, unmarked_neighbors):
-        print("parent_move: ", move_x, move_y)
-        print(unmarked_neighbors)
+        #print("parent_move: ", move_x, move_y)
+        #print(unmarked_neighbors)
         if len(unmarked_neighbors) > 1: # if multiple actions available
             heapq.heappush(self._frontier, (self._getEffectiveLabel(move_x, move_y), move_x, move_y))
         self._move_x, self._move_y = unmarked_neighbors[0]
+        if ai_action == AI.Action.FLAG:
+            self._flags.add((self._move_x, self._move_y))
         return Action(ai_action, self._move_x, self._move_y)
 
     def _getEffectiveLabel(self, move_x, move_y):
@@ -177,7 +180,7 @@ class MyAI( AI ):
     def _getRandomMove(self):
         for x in range(self._rowDimension):
             for y in range(self._colDimension):
-                if self._board[x][y] == None:
+                if self._board[x][y] == None and (x, y) not in self._flags:
                     return (x,y)
 
     def _getFrontierPriority(self, move_x, move_y):
