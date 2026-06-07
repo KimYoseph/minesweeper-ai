@@ -75,8 +75,6 @@ class MyAI( AI ):
         #effective label == 0
         self._updateBoard(number)
         self._updateFrontier(number)
-        print(self._frontier)
-        print("x:", self._move_x, "y:", self._move_y, "tile_no",self._board[self._move_x][self._move_y])
 
         returning_action = None
         checked_tiles= set()
@@ -132,8 +130,6 @@ class MyAI( AI ):
             heapq.heappush(self._frontier, (self._getEffectiveLabel(self._move_x, self._move_y), self._move_x, self._move_y))
 
     def _makeMove(self, ai_action, move_x, move_y, unmarked_neighbors):
-        #print("parent_move: ", move_x, move_y)
-        #print(unmarked_neighbors)
         if len(unmarked_neighbors) > 1: # if multiple actions available
             heapq.heappush(self._frontier, (self._getEffectiveLabel(move_x, move_y), move_x, move_y))
         self._move_x, self._move_y = unmarked_neighbors[0]
