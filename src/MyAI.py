@@ -89,11 +89,13 @@ class MyAI( AI ):
             tile_no, move_x, move_y = heapq.heappop(self._frontier)
             unmarked_neighbors = self._getUnMarkedNeighbors(move_x, move_y)
 
+            if not unmarked_neighbors: continue # doesn't belong in frontier
+
             # effective label == 0
-            if self._getEffectiveLabel(move_x, move_y) == 0 and unmarked_neighbors: # all cells are safe
+            if self._getEffectiveLabel(move_x, move_y) == 0: # all cells are safe
                 returning_action = self._makeMove(AI.Action.UNCOVER, move_x, move_y, unmarked_neighbors)
             #effective label == len(UnMarkedNeighbors)
-            elif self._getEffectiveLabel(move_x, move_y) == len(unmarked_neighbors) and unmarked_neighbors:
+            elif self._getEffectiveLabel(move_x, move_y) == len(unmarked_neighbors):
                 returning_action = self._makeMove(AI.Action.FLAG, move_x, move_y, unmarked_neighbors)
             else:
                 checked_tiles.add((move_x, move_y))
@@ -178,7 +180,7 @@ class MyAI( AI ):
             return self._getRandomMove()
 
         DEPTH_LIMIT = 18 
-        MAX_SOLUTIONS = 100
+        MAX_SOLUTIONS = 500
         MAX_CLUSTERS = 25
 
         clusters = clusters[:MAX_CLUSTERS]
@@ -322,6 +324,17 @@ class MyAI( AI ):
             if assigned_mines + unknown_cnt < effective_label:
                 return False
 
+        remaining_mines = self._total_mines - len(self._flags)
+        assigned_mine_count = sum(assignment.values())
+        unassigned_in_cluster = len(selected_cells) - len(assignment)
+        all_unmarked_count = len(self._getAllUnMarkedCell())
+        outside_cluster_count = all_unmarked_count - len(selected_cells)
+
+        if assigned_mine_count > remaining_mines:
+            return False
+        if outside_cluster_count == 0 and assigned_mine_count + unassigned_in_cluster < remaining_mines:
+            return False
+
         return True
 
     def _check_all_constraints(self, assignment, selected_cells):
@@ -357,6 +370,16 @@ class MyAI( AI ):
         return True
             
 
+    def _newBacktrack(self, cluster, depth_limit):
+        # key idea is that we don't need multiple solutions. If we have one surefire solution, we just take it
+        '''
+        cluster: unmarked_neighbors of a cluster
+
+        '''
+        stack = []
+
+
+
     def _backtrack(self, cells, selected_cells, assignment, path,
                solutions, mine_counts, depth_limit, max_solutions):
         '''
@@ -367,7 +390,7 @@ class MyAI( AI ):
         if len(solutions) >= max_solutions:
             return
 
-        if len(path) >= depth_limit or len(assignment) == len(cells):
+        if len(assignment) == len(cells):
             if self._check_all_constraints(assignment, selected_cells):
                 solutions.append(dict(assignment))
                 for cell, value in assignment.items():
@@ -376,7 +399,7 @@ class MyAI( AI ):
             return
 
         cell = self._choose_unassigned_cell(cells, assignment)
-        if cell is None:
+        if cell is None or len(assignment) >= depth_limit:
             return
 
         # Try SAFE first, then MINE.
